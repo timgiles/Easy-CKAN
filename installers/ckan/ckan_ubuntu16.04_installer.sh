@@ -59,8 +59,8 @@ echo    "# ======================================================== #"
 echo    "# == 3. Install CKAN dependences from 'apt-get'         == #"
 echo    "# ======================================================== #"
 su -c "sleep 2"
-apt-get install -y python-dev postgresql libpq-dev python-pip python-virtualenv git-core openjdk-8-jdk sudo
-mkdir /usr/java
+apt-get install -y python-dev postgresql libpq-dev python-pip python-virtualenv git-core solr-jetty openjdk-8-jdk redis-server
+sudo mkdir /usr/java
 ln -s /usr/lib/jvm/java-8-openjdk-amd64 /usr/java/default
 
 # HARD FIX POSTGRES
@@ -106,6 +106,11 @@ chmod 775 -R /usr/local/lib/python2.7
 chmod 755 /usr/lib/ckan
 chown ckan.33 -R /usr/lib/ckan
 
+sudo mkdir -p ~/ckan/lib
+sudo ln -s ~/ckan/lib /usr/lib/ckan
+sudo mkdir -p ~/ckan/etc
+sudo ln -s ~/ckan/etc /etc/ckan
+
 # Python Virtual Environment
 echo    "# 4.2. Creating Python Virtual Environment..."
 su -c "sleep 2"
@@ -118,9 +123,9 @@ su -s /bin/bash - ckan -c ". /usr/lib/ckan/default/bin/activate && pip install h
 
 # Installing CKAN and dependences
 echo    "# 4.3. Installing CKAN and dependences..."
-apt-get install -y libmemcached-dev zlib1g-dev # FIX for CKAN 2.6.0
+apt-get install -y libmemcached-dev zlib1g-dev # FIX for CKAN 2.5.6
 su -c "sleep 2"
-su -s /bin/bash - ckan -c ". /usr/lib/ckan/default/bin/activate && pip install -e 'git+https://github.com/ckan/ckan.git@ckan-2.6.2#egg=ckan'"
+su -s /bin/bash - ckan -c ". /usr/lib/ckan/default/bin/activate && pip install -e 'git+https://github.com/ckan/ckan.git@ckan-2.5.6#egg=ckan'"
 sed -i "s/bleach==1.4.2/bleach==1.4.3/g" /usr/lib/ckan/default/src/ckan/requirements.txt # HOT FIX
 su -s /bin/bash - ckan -c ". /usr/lib/ckan/default/bin/activate && pip install -r /usr/lib/ckan/default/src/ckan/pip-requirements-docs.txt"
 
@@ -159,14 +164,20 @@ echo    "# ======================================================== #"
 echo    "# == 5. Install Apache Solr                             == #"
 echo    "# ======================================================== #"
 su -c "sleep 2"
-echo    "# 5.1. Installing from 'apt-get'..."
-apt-get -y install solr-tomcat
+echo    "# 5.1. Updating Jetty config"
+sed -i "s/#JETTY_HOST=$(uname -n)/JETTY_HOST=127.0.0.1/g" /etc/ckan/default/development.ini
+sed -i "s/#JETTY_PORT=8080/JETTY_PORT=8983/g" /etc/ckan/default/development.ini
+
+echo    "# 5.2. Restarting Jetty..."
+service jetty8 restart
+
+echo    "# 5.3. Updating Schema XML"
 mv /etc/solr/conf/schema.xml /etc/solr/conf/schema.xml.bak
-cp /usr/lib/ckan/default/src/ckan/ckan/config/solr/schema.xml /etc/solr/conf/schema.xml
+ln -s /usr/lib/ckan/default/src/ckan/ckan/config/solr/schema.xml /etc/solr/conf/schema.xml
 
 # Restarting services
-echo    "# 5.2. Restarting Solr..."
-service tomcat7 restart
+echo    "# 5.3. Restarting Solr..."
+service jetty8 restart
 
 
 
@@ -196,15 +207,15 @@ service postgresql restart
 # HARD FIX POSTGRES
 
 echo    "# 6.1. Initilize CKAN database..."
-service tomcat7 restart
+service jetty8 restart
 su -s /bin/bash - ckan -c ". /usr/lib/ckan/default/bin/activate && cd /usr/lib/ckan/default/src/ckan && paster db init -c /etc/ckan/default/development.ini"
 
 echo    "# 6.2. Set 'who.ini'..."
 ln -s /usr/lib/ckan/default/src/ckan/who.ini /etc/ckan/default/who.ini
 
-echo    "# 6.3. Enable Tomcat6 and PostgreSQL on startup..."
+echo    "# 6.3. Enable Jetty8 and PostgreSQL on startup..."
 sudo update-rc.d postgresql enable
-sudo update-rc.d tomcat7 enable
+sudo update-rc.d jetty8 enable
 
 
 
